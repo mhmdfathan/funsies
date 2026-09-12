@@ -2,6 +2,9 @@
   "name": "funsies",
   "private": true,
   "type": "module",
+  "scripts": {
+    "contract:check": "bun run contracts/validate-openapi.ts"
+  },
   "workspaces": [
     "apps/*"
   ],

@@ -45,7 +45,7 @@ apps/backend/src/
 apps/frontend/src/
   routes/                  # page loading and forms
   lib/features/            # components and client state by feature
-packages/contracts/        # API schemas and DTO types only
+contracts/                 # OpenAPI contract, API schemas, and DTO types
 migrations/                # ordered SQL migrations
 ```
 

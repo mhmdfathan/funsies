@@ -28,8 +28,9 @@ for (const [path, item] of Object.entries(document.paths ?? {})) {
     if (!operation.operationId) failures.push(`${method} ${path}: missing operationId`);
     else if (operationIds.has(operation.operationId)) failures.push(`${method} ${path}: duplicate operationId`);
     else operationIds.add(operation.operationId);
-    const parameters = [...((item as any).parameters ?? []), ...(operation.parameters ?? [])];
-    for (const name of names) if (!parameters.some((p: any) => p.in === "path" && p.name === name && p.required))
+    const parameters = [...((item as any).parameters ?? []), ...(operation.parameters ?? [])]
+      .map((parameter: any) => parameter.$ref ? resolve(parameter.$ref) : parameter);
+    for (const name of names) if (!parameters.some((p: any) => p?.in === "path" && p.name === name && p.required))
       failures.push(`${method} ${path}: missing path parameter ${name}`);
     const statuses = Object.keys(operation.responses ?? {});
     if (!statuses.some((status) => /^2\d\d$/.test(status))) failures.push(`${method} ${path}: no success response`);

@@ -5,7 +5,7 @@
 Validate it without downloading packages:
 
 ```sh
-bun run packages/contracts/validate-openapi.ts
+bun run contracts/validate-openapi.ts
 ```
 
 The validator checks JSON syntax, local references, operation IDs, path parameters, and success/error responses.
