@@ -7,13 +7,19 @@
     "dev": "bun --watch src/index.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^1.0.0-rc.4",
+    "tsx": "^4.23.13"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
     "@elysia/cors": "^1.4.2",
-    "elysia": "^1.4.30"
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^1.0.0-rc.4",
+    "elysia": "^1.4.30",
+    "pg": "^8.23.0"
   }
 }
