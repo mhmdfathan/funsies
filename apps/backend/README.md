@@ -1,4 +1,4 @@
-# funsies
+# backend
 
 To install dependencies:
 
