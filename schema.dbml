@@ -1,0 +1,780 @@
+// ============================================================
+// Full schema — DBML for dbdiagram.io
+// See chat response for the design-decision rationale.
+// ============================================================
+
+//////////////////// ENUMS ////////////////////
+
+Enum user_status {
+  active
+  suspended
+  deleting
+  deleted
+}
+
+Enum merchant_approval_status {
+  pending
+  approved
+  rejected
+}
+
+Enum membership_role {
+  owner
+  staff
+}
+
+Enum membership_status {
+  active
+  revoked
+}
+
+Enum claim_status {
+  pending
+  approved
+  rejected
+}
+
+Enum place_state {
+  community
+  open
+  closed
+  merged
+}
+
+Enum correction_status {
+  pending
+  approved
+  rejected
+}
+
+Enum post_kind {
+  visit
+  update
+  merchant_update
+}
+
+Enum post_status {
+  draft
+  published
+  hidden
+  deleted
+}
+
+Enum eligibility_hold_status {
+  none
+  duplicate_pending
+}
+
+Enum location_check_result {
+  passed
+  failed
+  inconclusive
+}
+
+Enum receipt_check_status {
+  pending
+  approved
+  rejected
+  expired
+  revoked
+}
+
+Enum media_status {
+  uploading
+  processing
+  ready
+  rejected
+  deleted
+}
+
+Enum save_target_type {
+  place
+  post
+  guide
+}
+
+Enum area_source {
+  admin
+  derived
+}
+
+Enum comment_visibility {
+  public
+  hidden
+  deleted
+}
+
+Enum guide_status {
+  draft
+  published
+  archived
+}
+
+Enum message_sender_type {
+  reviewer
+  organization
+}
+
+Enum message_state {
+  sent
+  read
+  deleted
+}
+
+Enum correction_request_status {
+  open
+  accepted
+  declined
+  closed
+}
+
+Enum moderation_target_type {
+  post
+  comment
+  place
+  user
+  organization
+  guide
+}
+
+Enum appeal_status {
+  open
+  upheld
+  overturned
+}
+
+//////////////////// IDENTITY ////////////////////
+
+Table users {
+  id uuid [primary key]
+  handle varchar [not null]
+  email_normalized varchar [not null]
+  password_hashed varchar
+  status user_status [not null, default: 'active']
+  created_at timestamp [not null]
+  updated_at timestamp
+  deleted_at timestamp
+
+  indexes {
+    (handle) [unique, note: 'case-insensitive unique — enforce via lower(handle) in Postgres']
+    (email_normalized) [unique]
+  }
+}
+
+Table profiles {
+  id uuid [primary key]
+  user_id uuid [ref: - users.id, not null]
+  first_name varchar
+  last_name varchar
+  birth_date date
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+
+  Note: 'public profile fields; email stays private on users'
+}
+
+//////////////////// AUTH ////////////////////
+
+Table auth_challenges {
+  id uuid [primary key]
+  user_id uuid [ref: > users.id, not null]
+  code_digest varchar [not null]
+  expires_at timestamp [not null]
+  attempts int [not null, default: 0]
+  created_at timestamp [not null]
+}
+
+Table sessions {
+  id uuid [primary key]
+  user_id uuid [ref: > users.id, not null]
+  token_digest varchar [not null]
+  idle_expires_at timestamp [not null]
+  absolute_expires_at timestamp [not null]
+  created_at timestamp [not null]
+
+  indexes {
+    (token_digest) [unique]
+  }
+}
+
+//////////////////// RBAC ////////////////////
+
+Table modules {
+  id uuid [primary key]
+  name varchar
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table permissions {
+  id uuid [primary key]
+  module_id uuid [not null]
+  name varchar
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table roles {
+  id uuid [primary key]
+  name varchar
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table roles_permissions {
+  id int [primary key]
+  role_id uuid [not null]
+  permission_id uuid [not null]
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+
+  indexes {
+    (role_id, permission_id) [unique]
+  }
+}
+
+Table users_roles {
+  id int [primary key]
+  user_id uuid [not null]
+  role_id uuid [not null]
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+
+  indexes {
+    (user_id, role_id) [unique]
+  }
+}
+
+//////////////////// TAXONOMY ////////////////////
+
+Table categories {
+  id int [primary key]
+  name varchar
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table cuisines {
+  id int [primary key]
+  name varchar
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table place_cuisines {
+  id int [primary key]
+  place_id uuid [ref: > places.id, not null]
+  cuisine_id int [ref: > cuisines.id, not null]
+
+  indexes {
+    (place_id, cuisine_id) [unique]
+  }
+}
+
+//////////////////// PLACES ////////////////////
+
+Table places {
+  id uuid [primary key]
+  category_id int [ref: > categories.id, not null]
+  name varchar
+  normalized_address varchar
+  country varchar
+  description varchar
+  geography point [note: 'geography(Point,4326) in Postgres/PostGIS']
+  iana_timezone varchar
+  location_version int [not null, default: 1]
+  location_approved bool [not null, default: false]
+  state place_state [not null, default: 'community']
+  canonical_target uuid [ref: > places.id, note: 'set when state = merged']
+  predecessor uuid [ref: > places.id]
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table place_corrections {
+  id uuid [primary key]
+  place_id uuid [ref: > places.id, not null]
+  proposed_patch jsonb [not null]
+  submitter_id uuid [ref: > users.id, not null]
+  status correction_status [not null, default: 'pending']
+  deciding_staff_id uuid [ref: > users.id]
+  created_at timestamp
+  decided_at timestamp
+}
+
+//////////////////// MERCHANTS ////////////////////
+
+Table merchant_organizations {
+  id uuid [primary key]
+  name varchar
+  approval_status merchant_approval_status [not null, default: 'pending']
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+
+  Note: 'does not authenticate independently — see merchant_memberships'
+}
+
+Table merchant_memberships {
+  id uuid [primary key]
+  organization_id uuid [ref: > merchant_organizations.id, not null]
+  user_id uuid [ref: > users.id, not null]
+  role membership_role [not null]
+  status membership_status [not null, default: 'active']
+  actor_permissions jsonb [note: 'actor-level permission set']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (organization_id, user_id) [unique]
+  }
+}
+
+Table place_claims {
+  id uuid [primary key]
+  place_id uuid [ref: > places.id, not null]
+  organization_id uuid [ref: > merchant_organizations.id, not null]
+  claimant_id uuid [ref: > users.id, not null]
+  status claim_status [not null, default: 'pending']
+  evidence_asset_id uuid [ref: > media_assets.id, note: 'private evidence, not public']
+  reviewer_id uuid [ref: > users.id]
+  decided_at timestamp
+  created_at timestamp
+}
+
+//////////////////// POSTS / VISITS ////////////////////
+
+Table posts {
+  id uuid [primary key]
+  kind post_kind [not null]
+  author_user_id uuid [ref: > users.id, note: 'reviewer author']
+  author_organization_id uuid [ref: > merchant_organizations.id, note: 'merchant author']
+  acting_user_id uuid [ref: > users.id, note: 'user acting on behalf of organization']
+  place_id uuid [ref: > places.id, not null]
+  body varchar
+  status post_status [not null, default: 'draft']
+  version int [not null, default: 1]
+  published_at timestamp
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+
+  Note: 'exactly one of author_user_id / author_organization_id set, enforced via CHECK'
+}
+
+Table visits {
+  id uuid [primary key, ref: - posts.id, note: 'shared PK/FK — visits extends posts 1:1']
+  local_date date [not null]
+  local_time time
+  timezone varchar [not null]
+  rating int [not null, note: '1..5, enforce via CHECK']
+  context varchar
+  order_total decimal
+  order_currency char(3)
+  party_size int
+  conflict_status varchar
+  eligibility_hold eligibility_hold_status [not null, default: 'none']
+  dedupe_active bool [not null, default: true]
+  author_id uuid [ref: > users.id, not null, note: 'denormalized copy from parent post']
+  place_id uuid [ref: > places.id, not null, note: 'denormalized copy from parent post']
+}
+
+Table post_revisions {
+  id uuid [primary key]
+  post_id uuid [ref: > posts.id, not null]
+  version int [not null]
+  changed_fields jsonb [not null, note: 'public fields only — private time/evidence never serialized']
+  actor_id uuid [ref: > users.id, not null]
+  reason varchar
+  created_at timestamp
+
+  indexes {
+    (post_id, version) [unique]
+  }
+}
+
+//////////////////// RATINGS ////////////////////
+
+Table rating_contributions {
+  id uuid [primary key, ref: - visits.id, note: 'shared PK/FK — only currently-eligible visits get a row']
+  canonical_place_id uuid [ref: > places.id, not null]
+  rating int [not null]
+}
+
+Table place_rating_stats {
+  place_id uuid [primary key, ref: - places.id]
+  sum int [not null, default: 0]
+  count int [not null, default: 0]
+  bucket_1 int [not null, default: 0]
+  bucket_2 int [not null, default: 0]
+  bucket_3 int [not null, default: 0]
+  bucket_4 int [not null, default: 0]
+  bucket_5 int [not null, default: 0]
+
+  Note: 'maintained in the same transaction as rating_contributions writes'
+}
+
+//////////////////// VERIFICATION ////////////////////
+
+Table verification_challenges {
+  id uuid [primary key]
+  owner_id uuid [ref: > users.id, not null]
+  draft_visit_id uuid [ref: > visits.id, not null]
+  place_version int [not null]
+  challenge varchar [not null, note: 'random challenge value']
+  expires_at timestamp [not null]
+  consumed_at timestamp
+
+  Note: 'no submitted device coordinates stored'
+}
+
+Table location_checks {
+  id uuid [primary key]
+  visit_id uuid [ref: > visits.id, not null]
+  owner_id uuid [ref: > users.id, not null]
+  result location_check_result [not null]
+  server_checked_at timestamp [not null]
+  local_check_date date [not null]
+  approved_place_version int [not null]
+  policy_version int [not null]
+  attached_at timestamp
+  revocation_reason varchar
+}
+
+Table receipt_checks {
+  id uuid [primary key]
+  visit_id uuid [ref: > visits.id, not null]
+  asset_id uuid [ref: > media_assets.id, not null]
+  status receipt_check_status [not null, default: 'pending']
+  file_fingerprint varchar [not null]
+  extracted_fields jsonb
+  bound_field_digest varchar
+  reviewer_id uuid [ref: > users.id]
+  decided_at timestamp
+
+  indexes {
+    (file_fingerprint) [unique]
+  }
+}
+
+//////////////////// MEDIA ////////////////////
+
+Table media_assets {
+  id uuid [primary key]
+  owner_id uuid [ref: > users.id, not null]
+  purpose varchar [not null]
+  storage_key varchar [not null, note: 'private — never exposed publicly']
+  mime_type varchar
+  size_bytes int
+  status media_status [not null, default: 'uploading']
+  created_at timestamp
+}
+
+Table post_media {
+  id uuid [primary key]
+  post_id uuid [ref: > posts.id, not null]
+  media_asset_id uuid [ref: > media_assets.id, not null]
+
+  indexes {
+    (post_id, media_asset_id) [unique]
+  }
+}
+
+//////////////////// SOCIAL ////////////////////
+
+Table follows {
+  id uuid [primary key]
+  follower_id uuid [ref: > users.id, not null]
+  followee_id uuid [ref: > users.id, not null]
+  created_at timestamp
+
+  indexes {
+    (follower_id, followee_id) [unique]
+  }
+}
+
+Table saves {
+  id uuid [primary key]
+  user_id uuid [ref: > users.id, not null]
+  target_type save_target_type [not null]
+  place_id uuid [ref: > places.id]
+  post_id uuid [ref: > posts.id]
+  guide_id uuid [ref: > guides.id]
+  created_at timestamp
+
+  indexes {
+    (user_id, target_type, place_id, post_id, guide_id) [unique]
+  }
+
+  Note: 'exactly one of place_id/post_id/guide_id set, matching target_type — enforce via CHECK'
+}
+
+//////////////////// PREFERENCES ////////////////////
+
+Table preferences {
+  user_id uuid [primary key, ref: - users.id]
+  cuisine_ids jsonb [note: 'array of cuisine ids']
+  budget_amount decimal
+  budget_currency char(3)
+  radius_m int
+}
+
+Table areas {
+  id uuid [primary key]
+  user_id uuid [ref: > users.id, note: 'null when admin-maintained']
+  name varchar
+  center point
+  timezone varchar
+  source area_source [not null]
+  derived_from_place_id uuid [ref: > places.id, note: 'set when source = derived']
+  created_at timestamp
+}
+
+//////////////////// COMMENTS ////////////////////
+
+Table comments {
+  id uuid [primary key]
+  post_id uuid [ref: > posts.id, not null]
+  user_id uuid [ref: > users.id, not null]
+  organization_id uuid [ref: > merchant_organizations.id]
+  parent_id uuid [ref: > comments.id]
+  body varchar [not null]
+  visibility comment_visibility [not null, default: 'public']
+  created_at timestamp
+
+  Note: 'parent_id, if set, must belong to the same post — enforce in application/trigger'
+}
+
+//////////////////// GUIDES ////////////////////
+
+Table guides {
+  id uuid [primary key]
+  author_id uuid [ref: > users.id, not null]
+  status guide_status [not null, default: 'draft']
+  version int [not null, default: 1]
+  title varchar
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table guide_entries {
+  id uuid [primary key]
+  guide_id uuid [ref: > guides.id, not null]
+  position int [not null]
+  source_visit_id uuid [ref: > visits.id, not null]
+  entry_advice varchar
+  source_status varchar [note: 'must belong to the guide author — enforce in application']
+
+  indexes {
+    (guide_id, position) [unique]
+  }
+}
+
+Table guide_saves {
+  id uuid [primary key]
+  user_id uuid [ref: > users.id, not null]
+  guide_id uuid [ref: > guides.id, not null]
+  last_seen_version int
+
+  indexes {
+    (user_id, guide_id) [unique]
+  }
+
+  Note: 'live reference — resolves against current guide version'
+}
+
+//////////////////// MERCHANT COMMS ////////////////////
+
+Table merchant_contact_grants {
+  id uuid [primary key]
+  reviewer_id uuid [ref: > users.id, not null]
+  organization_id uuid [ref: > merchant_organizations.id, not null]
+  granted_at timestamp
+  revoked_at timestamp
+
+  indexes {
+    (reviewer_id, organization_id) [unique]
+  }
+}
+
+Table conversations {
+  id uuid [primary key]
+  reviewer_id uuid [ref: > users.id, not null]
+  organization_id uuid [ref: > merchant_organizations.id, not null]
+  created_at timestamp
+
+  indexes {
+    (reviewer_id, organization_id) [unique]
+  }
+}
+
+Table messages {
+  id uuid [primary key]
+  conversation_id uuid [ref: > conversations.id, not null]
+  sender_type message_sender_type [not null]
+  sender_user_id uuid [ref: > users.id]
+  body varchar [not null]
+  state message_state [not null, default: 'sent']
+  created_at timestamp
+
+  Note: 'no attachments'
+}
+
+//////////////////// CORRECTIONS / TRUST & SAFETY ////////////////////
+
+Table correction_requests {
+  id uuid [primary key]
+  report_id uuid [ref: > reports.id, not null]
+  organization_id uuid [ref: > merchant_organizations.id, not null]
+  requested_fields jsonb
+  reason varchar
+  status correction_request_status [not null, default: 'open']
+  created_at timestamp
+
+  indexes {
+    (report_id, organization_id) [unique, note: 'one open request per pair — partial unique WHERE status = open']
+  }
+}
+
+Table blocks {
+  id uuid [primary key]
+  blocking_user_id uuid [ref: > users.id, not null]
+  blocked_user_id uuid [ref: > users.id]
+  blocked_organization_id uuid [ref: > merchant_organizations.id]
+  created_at timestamp
+
+  indexes {
+    (blocking_user_id, blocked_user_id, blocked_organization_id) [unique]
+  }
+
+  Note: 'exactly one of blocked_user_id / blocked_organization_id set — enforce via CHECK'
+}
+
+Table reports {
+  id uuid [primary key]
+  target_type moderation_target_type [not null]
+  target_id uuid [not null]
+  reason varchar
+  actor_id uuid [ref: > users.id, not null]
+  created_at timestamp
+}
+
+Table moderation_actions {
+  id uuid [primary key]
+  report_id uuid [ref: > reports.id]
+  target_type moderation_target_type [not null]
+  target_id uuid [not null]
+  actor_id uuid [ref: > users.id, not null]
+  action varchar [not null]
+  decided_at timestamp
+
+  Note: 'append-only'
+}
+
+Table appeals {
+  id uuid [primary key]
+  moderation_action_id uuid [ref: - moderation_actions.id, not null]
+  actor_id uuid [ref: > users.id, not null]
+  body varchar
+  status appeal_status [not null, default: 'open']
+  decided_at timestamp
+}
+
+//////////////////// CAMPAIGNS ////////////////////
+
+Table campaigns {
+  id uuid [primary key]
+  organization_id uuid [ref: > merchant_organizations.id, not null]
+  managed_place_id uuid [ref: > places.id, not null]
+  creative_asset_id uuid [ref: > media_assets.id]
+  start_at timestamp
+  end_at timestamp
+  country varchar
+  area_radius_m int
+  enabled bool [not null, default: true]
+  staff_owner_id uuid [ref: > users.id]
+}
+
+//////////////////// NOTIFICATIONS ////////////////////
+
+Table notifications {
+  id uuid [primary key]
+  recipient_id uuid [ref: > users.id, not null]
+  type varchar [not null]
+  target_type varchar
+  target_id uuid
+  payload jsonb [note: 'contains IDs, not copied user content']
+  read_at timestamp
+  created_at timestamp
+}
+
+//////////////////// JOBS ////////////////////
+
+Table jobs {
+  id uuid [primary key]
+  route varchar [not null]
+  key varchar [not null]
+  available_at timestamp [not null]
+  lease_until timestamp
+  attempts int [not null, default: 0]
+
+  indexes {
+    (route, key) [unique, note: 'dedup key']
+  }
+}
+
+Table idempotency_keys {
+  id uuid [primary key]
+  actor_id uuid [ref: > users.id, not null]
+  route varchar [not null]
+  key varchar [not null]
+  request_hash varchar [not null]
+  response_ref varchar
+
+  indexes {
+    (actor_id, route, key) [unique]
+  }
+}
+
+//////////////////// FEED / DELETION ////////////////////
+
+Table feed_snapshots {
+  id uuid [primary key]
+  owner_id uuid [ref: > users.id]
+  session_id varchar [note: 'used when owner_id is null (anonymous)']
+  post_ids jsonb [not null]
+  campaign_slot_ids jsonb
+  feed_offset int [not null, default: 0]
+  expires_at timestamp [not null]
+
+  Note: 'no raw search coordinates stored'
+}
+
+Table deletion_requests {
+  id uuid [primary key]
+  subject_type varchar [not null]
+  subject_id uuid [not null]
+  requested_at timestamp [not null]
+  stage varchar [not null]
+  purged_at timestamp
+  restore_suppression_id varchar
+
+  Note: 'restore_suppression_id blocks re-creation of a purged subject'
+}
+
+//////////////////// CORE REFS ////////////////////
+
+Ref users_roles_user: users_roles.user_id > users.id
+Ref users_roles_role: users_roles.role_id > roles.id
+Ref roles_permissions_role: roles_permissions.role_id > roles.id
+Ref roles_permissions_permission: roles_permissions.permission_id > permissions.id
+Ref module_permissions: permissions.module_id > modules.id
