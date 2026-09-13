@@ -10,7 +10,7 @@ Enum user_status {
   suspended
   deleting
   deleted
-}
+} DONE
 
 Enum merchant_approval_status {
   pending
@@ -147,8 +147,7 @@ Enum appeal_status {
 
 Table users {
   id uuid [primary key]
-  handle varchar [not null]
-  email_normalized varchar [not null]
+  email varchar [not null]
   password_hashed varchar
   status user_status [not null, default: 'active']
   created_at timestamp [not null]
