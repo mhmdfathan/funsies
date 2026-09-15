@@ -260,54 +260,22 @@ Table categories {
   deleted_at timestamp
 }
 
-Table cuisines {
-  id int [primary key]
-  name varchar
-  created_at timestamp
-  updated_at timestamp
-  deleted_at timestamp
-}
-
-Table place_cuisines {
-  id int [primary key]
-  place_id uuid [ref: > places.id, not null]
-  cuisine_id int [ref: > cuisines.id, not null]
-
-  indexes {
-    (place_id, cuisine_id) [unique]
-  }
-}
-
 //////////////////// PLACES ////////////////////
 
 Table places {
   id uuid [primary key]
   category_id int [ref: > categories.id, not null]
   name varchar
-  normalized_address varchar
+  address varchar
   country varchar
   description varchar
-  geography point [note: 'geography(Point,4326) in Postgres/PostGIS']
+  latitude varchar
+  longitude varchar
   iana_timezone varchar
-  location_version int [not null, default: 1]
-  location_approved bool [not null, default: false]
-  state place_state [not null, default: 'community']
-  canonical_target uuid [ref: > places.id, note: 'set when state = merged']
-  predecessor uuid [ref: > places.id]
+  verifiedAt int
   created_at timestamp
   updated_at timestamp
   deleted_at timestamp
-}
-
-Table place_corrections {
-  id uuid [primary key]
-  place_id uuid [ref: > places.id, not null]
-  proposed_patch jsonb [not null]
-  submitter_id uuid [ref: > users.id, not null]
-  status correction_status [not null, default: 'pending']
-  deciding_staff_id uuid [ref: > users.id]
-  created_at timestamp
-  decided_at timestamp
 }
 
 //////////////////// MERCHANTS ////////////////////
